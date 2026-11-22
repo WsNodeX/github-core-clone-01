@@ -1,1 +1,1 @@
-{"description":"A GitHub-compatible git forge: smart HTTP, REST v3, GraphQL and MCP in one Node process.","main":"main.ts","name":"makefun-forge","private":true,"type":"module","version":"1.0.0"}
+{"description":"A GitHub-compatible git forge: smart HTTP, REST v3, GraphQL and MCP in one Node process.","main":"main.ts","bin":{"forge":"./main.ts"},"name":"forge-git","type":"module","version":"1.0.0"}

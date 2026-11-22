@@ -1,7 +1,8 @@
 // The HTTP server and the trial lifecycle: one Node process serves git smart HTTP,
 // REST v3, GraphQL and MCP from the shared store. On boot it binds an ephemeral port,
-// POSTs {"port": N} to $MAKEFUN_ENV_URL/register, then polls $MAKEFUN_ENV_URL/done and
-// exits 0 when the suite is over. Without MAKEFUN_ENV_URL it just serves (local runs).
+// An optional supervisor URL can be supplied via $FORGE_ENV_URL: the process POSTs
+// {"port": N} to /register, polls /done, and exits 0 when the supervisor says the run
+// is over. Without it the process simply serves, which is what local use wants.
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { Store } from './store.ts';
@@ -228,10 +229,10 @@ async function registerAndPoll(envUrl: string, port: number): Promise<void> {
   void poll();
 }
 
-/** Start the forge: bind an ephemeral port, register with the env when there is one. */
+/** Start the forge: bind an ephemeral port, register with a supervisor when one is set. */
 export async function startForge(): Promise<void> {
   const store = new Store();
-  const expectedToken = process.env.MAKEFUN_SHOP_TOKEN ?? '';
+  const expectedToken = process.env.FORGE_TOKEN ?? '';
   const server = createServer((req, res) => {
     handle(store, expectedToken, req, res).catch(() => {
       try {
@@ -248,7 +249,7 @@ export async function startForge(): Promise<void> {
   const address = server.address();
   const port = typeof address === 'object' && address !== null ? address.port : 0;
   process.stdout.write(`FORGE_LISTENING ${port}\n`);
-  const envUrl = process.env.MAKEFUN_ENV_URL;
+  const envUrl = process.env.FORGE_ENV_URL;
   if (envUrl !== undefined && envUrl !== '') {
     await registerAndPoll(envUrl, port);
   }

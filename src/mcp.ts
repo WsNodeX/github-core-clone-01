@@ -9,7 +9,7 @@ import type { Ctx } from './ctx.ts';
 import type { Repo } from './store.ts';
 import { createIssue, createPull, issueJson, mergePull, pullJson, repoJson } from './domain.ts';
 
-const SERVER_INFO = { name: 'makefun-forge', version: '1.0.0' };
+const SERVER_INFO = { name: 'forge', version: '1.0.0' };
 const SUPPORTED_VERSIONS = ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26'];
 
 interface ToolDef {

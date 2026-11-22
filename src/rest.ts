@@ -211,8 +211,8 @@ function commitsRoute(ctx: Ctx, repo: Repo): void {
     sha: entry.sha,
     commit: {
       message: entry.message,
-      author: { name: 'Forge', email: 'forge@make.fun', date: new Date(entry.timeSec * 1000).toISOString() },
-      committer: { name: 'Forge', email: 'forge@make.fun', date: new Date(entry.timeSec * 1000).toISOString() },
+      author: { name: 'Forge', email: 'forge@localhost', date: new Date(entry.timeSec * 1000).toISOString() },
+      committer: { name: 'Forge', email: 'forge@localhost', date: new Date(entry.timeSec * 1000).toISOString() },
     },
     parents: entry.parents.map((parent) => ({ sha: parent })),
   }));

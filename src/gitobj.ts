@@ -80,7 +80,7 @@ export function buildCommit(fields: {
 
 /** An identity line `Name <email> <unix> +0000` for commits the forge itself authors. */
 export function identityLine(timeSec: number): string {
-  return `Forge <forge@make.fun> ${timeSec} +0000`;
+  return `Forge <forge@localhost> ${timeSec} +0000`;
 }
 
 export interface TagView {

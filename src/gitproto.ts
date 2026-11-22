@@ -93,7 +93,10 @@ export function advertiseReceivePack(repo: Repo): Buffer {
 function v0RefListing(repo: Repo, capabilities: string): Buffer[] {
   const names = refNames(repo);
   if (names.length === 0) {
-    return [encodePkt(`${ZERO_OID} capabilities^{}\0${capabilities}\n`)];
+    // An empty repository still has to end the listing. Without this flush the
+    // client blocks waiting for the rest of the advertisement and never sends
+    // its POST, so a push dies as "the remote end hung up".
+    return [encodePkt(`${ZERO_OID} capabilities^{}\0${capabilities}\n`), FLUSH_PKT];
   }
   const parts: Buffer[] = [];
   const headOid = defaultTip(repo) ?? ZERO_OID;
@@ -178,10 +181,12 @@ interface FetchArgs {
   haves: string[];
   clientShallow: string[];
   deepen: number | null;
+  /** The client sent "done": it is stateless and expects a packfile, not a negotiation. */
+  done: boolean;
 }
 
 function parseFetchArgs(body: Buffer, version2: boolean): FetchArgs {
-  const args: FetchArgs = { wants: [], haves: [], clientShallow: [], deepen: null };
+  const args: FetchArgs = { wants: [], haves: [], clientShallow: [], deepen: null, done: false };
   const reader = new PktReader(body);
   let section = 0; // v2: 0 = command args (before delim); v0: 0 = wants, 1 = negotiation
   for (let packet = reader.next(); packet !== null; packet = reader.next()) {
@@ -199,7 +204,8 @@ function parseFetchArgs(body: Buffer, version2: boolean): FetchArgs {
     const space = line.indexOf(' ');
     const key = space < 0 ? line : line.slice(0, space);
     const value = space < 0 ? '' : line.slice(space + 1).split(' ')[0];
-    if (key === 'want' && isOid(value)) args.wants.push(value);
+    if (key === 'done') args.done = true;
+    else if (key === 'want' && isOid(value)) args.wants.push(value);
     else if (key === 'have' && isOid(value)) args.haves.push(value);
     else if (key === 'shallow' && isOid(value)) args.clientShallow.push(value);
     else if (key === 'deepen') args.deepen = Number.parseInt(value, 10) || null;
@@ -351,14 +357,19 @@ export function fetchV2(repo: Repo, body: Buffer): Buffer {
     if (cacheable) storeClonePack(repo, args.wants[0], pack);
   }
   const parts: Buffer[] = [];
-  parts.push(encodePkt('acknowledgments\n'));
-  if (commonHave !== null) {
-    parts.push(encodePkt(`ACK ${commonHave} common\n`));
-    parts.push(encodePkt('ready\n'));
-  } else {
-    parts.push(encodePkt('NAK\n'));
+  // A client that sent "done" is not negotiating: it is waiting for the packfile
+  // section and reads an acknowledgments section as a protocol error. Only a
+  // client that is still narrowing down haves wants the ACK/NAK round.
+  if (!args.done) {
+    parts.push(encodePkt('acknowledgments\n'));
+    if (commonHave !== null) {
+      parts.push(encodePkt(`ACK ${commonHave} common\n`));
+      parts.push(encodePkt('ready\n'));
+    } else {
+      parts.push(encodePkt('NAK\n'));
+    }
+    parts.push(FLUSH_PKT);
   }
-  parts.push(FLUSH_PKT);
   if (boundary.length > 0 || unshallow.length > 0) {
     parts.push(encodePkt('shallow-info\n'));
     for (const oid of boundary) parts.push(encodePkt(`shallow ${oid}\n`));
