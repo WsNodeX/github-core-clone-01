@@ -1,0 +1,70 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Start the forge
+        run: |
+          set -eu
+          node main.ts > forge.log 2>&1 &
+          for _ in $(seq 1 50); do
+            grep -q FORGE_LISTENING forge.log && break
+            sleep 0.2
+          done
+          grep -q FORGE_LISTENING forge.log || { cat forge.log; exit 1; }
+
+      # The bug this guards against only ever appeared against a real git
+      # client, on a repository that did not exist yet, so the check drives
+      # the real thing instead of calling the handlers directly.
+      - name: Real git clone and push
+        run: |
+          set -eu
+          PORT=$(grep -o '[0-9]\+' forge.log | head -1)
+          echo "forge on $PORT"
+
+          curl -sf -X POST "http://127.0.0.1:$PORT/api/v3/user/repos" \
+            -H 'content-type: application/json' -d '{"name":"smoke"}'
+
+          git clone -q "http://127.0.0.1:$PORT/local/smoke.git" work
+          cd work
+          git config user.name ci
+          git config user.email ci@example.invalid
+          echo hello > a.txt
+          git add a.txt
+          git commit -qm first
+          git push -q origin HEAD:main
+
+          cd ..
+          git clone -q "http://127.0.0.1:$PORT/local/smoke.git" again
+          test "$(cat again/a.txt)" = hello
+
+      - name: Surfaces agree with the refs
+        run: |
+          set -eu
+          PORT=$(grep -o '[0-9]\+' forge.log | head -1)
+          branch=$(curl -sf "http://127.0.0.1:$PORT/api/v3/repos/local/smoke/branches")
+          echo "$branch" | grep -q '"name":"main"'
+          commit=$(curl -sf "http://127.0.0.1:$PORT/api/v3/repos/local/smoke/commits")
+          echo "$commit" | grep -q 'first'
+          gql=$(curl -sf -X POST "http://127.0.0.1:$PORT/api/graphql" \
+            -H 'content-type: application/json' -d '{"query":"{ viewer { login } }"}')
+          echo "$gql" | grep -q '"login"'
+          mcp=$(curl -sf -X POST "http://127.0.0.1:$PORT/mcp" \
+            -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}')
+          echo "$mcp" | grep -q '"tools"'
+          echo "all four surfaces answered"
